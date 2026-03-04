@@ -154,4 +154,4 @@ Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) befo
 
 ## License
 
-[MIT](./LICENSE) © energyi
+[MIT](./LICENSE) 
