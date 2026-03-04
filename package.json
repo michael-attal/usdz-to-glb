@@ -1,6 +1,6 @@
 {
   "name": "usdz-to-glb",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Convert Apple USDZ files (USDA + USDC) to GLB (binary GLTF 2.0) — pure JavaScript, no native dependencies",
   "keywords": [
     "usdz",
@@ -42,6 +42,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/energyi/usdz-to-glb"
+    "url": "https://github.com/Uzithei/usdz-to-glb"
   }
 }
