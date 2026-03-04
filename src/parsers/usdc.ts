@@ -404,10 +404,10 @@ function decodeScalar(typeTag: number, r: Reader, tokens: string[], strings: str
       const m: number[] = [];
       for (let i = 0; i < 16; i++) m.push(r.f64());
       return [
-        m[0], m[4], m[8],  m[12],
-        m[1], m[5], m[9],  m[13],
-        m[2], m[6], m[10], m[14],
-        m[3], m[7], m[11], m[15],
+        m[0],  m[1],  m[2],  m[3],
+        m[4],  m[5],  m[6],  m[7],
+        m[8],  m[9],  m[10], m[11],
+        m[12], m[13], m[14], m[15],
       ] as Mat4;
     }
     default: return undefined;
