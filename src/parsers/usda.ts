@@ -480,12 +480,21 @@ function buildMesh(prim: Prim, transform: Mat4): UsdMesh | null {
 
   let uvs: Float32Array | undefined;
   let uvIndices: Int32Array | undefined;
-  const rawUVs = (prim.attrs.get("primvars:st") ?? prim.attrs.get("primvars:uv")) as
-    [number,number][] | undefined;
-  if (rawUVs) {
-    uvs = new Float32Array(rawUVs.flatMap(v => v));
-    const rawUVIdx = prim.attrs.get("primvars:st:indices") as number[] | undefined;
-    if (rawUVIdx) uvIndices = new Int32Array(rawUVIdx);
+  // Try common UV primvar names: primvars:st, primvars:uv, primvars:st0, primvars:st1
+  const uvCandidates: [string, string][] = [
+    ["primvars:st",  "primvars:st:indices"],
+    ["primvars:uv",  "primvars:uv:indices"],
+    ["primvars:st0", "primvars:st0:indices"],
+    ["primvars:st1", "primvars:st1:indices"],
+  ];
+  for (const [uvKey, idxKey] of uvCandidates) {
+    const raw = prim.attrs.get(uvKey) as [number,number][] | undefined;
+    if (raw) {
+      uvs = new Float32Array(raw.flatMap(v => v));
+      const rawIdx = prim.attrs.get(idxKey) as number[] | undefined;
+      if (rawIdx) uvIndices = new Int32Array(rawIdx);
+      break;
+    }
   }
 
   const binding = prim.attrs.get("material:binding") as string | undefined;
@@ -523,7 +532,13 @@ function buildMaterial(prim: Prim): UsdMaterial {
       }
       if (infoId === "UsdUVTexture") {
         const file = p.attrs.get("inputs:file") as string | undefined;
-        if (file) diffuseTexturePath = file.replace(/^@|@$/g, "");
+        if (file) {
+          let texPath = file.replace(/^@|@$/g, "");
+          // Handle USDZ nested layer paths: "archive.usdz[inner/path]"
+          const bracketMatch = texPath.match(/\[(.+)\]$/);
+          if (bracketMatch) texPath = bracketMatch[1];
+          diffuseTexturePath = texPath;
+        }
       }
     }
     for (const child of p.children) findShaders(child);

@@ -65,12 +65,22 @@ function expandMesh(mesh: UsdMesh): {
   if (!points.length || !faceVertexCounts.length || !faceVertexIndices.length) return null;
 
   const triIndices: number[] = [];
+  const triCorners: number[] = []; // tracks original face-vertex corner index per triangulated vertex
   let corner = 0;
   for (let f = 0; f < faceVertexCounts.length; f++) {
     const count = faceVertexCounts[f];
     const face: number[] = [];
-    for (let v = 0; v < count; v++) face.push(faceVertexIndices[corner++]);
-    triIndices.push(...triangulateFace(face));
+    const faceCorners: number[] = [];
+    for (let v = 0; v < count; v++) {
+      face.push(faceVertexIndices[corner]);
+      faceCorners.push(corner);
+      corner++;
+    }
+    // Fan triangulation: for each triangle, map back to original corners
+    for (let i = 1; i < face.length - 1; i++) {
+      triIndices.push(face[0], face[i], face[i + 1]);
+      triCorners.push(faceCorners[0], faceCorners[i], faceCorners[i + 1]);
+    }
   }
 
   const numTris = triIndices.length; // = numTriangles * 3
@@ -87,7 +97,8 @@ function expandMesh(mesh: UsdMesh): {
   if (normals && normals.length > 0) {
     outNormals = new Float32Array(numTris * 3);
     for (let i = 0; i < numTris; i++) {
-      const ni = normals.length === points.length ? triIndices[i] * 3 : i * 3;
+      // Per-vertex normals: index by position; faceVarying normals: index by corner
+      const ni = normals.length === points.length ? triIndices[i] * 3 : triCorners[i] * 3;
       if (ni + 2 < normals.length) {
         outNormals[i * 3]     = normals[ni];
         outNormals[i * 3 + 1] = normals[ni + 1];
@@ -100,7 +111,8 @@ function expandMesh(mesh: UsdMesh): {
   if (uvs && uvs.length > 0) {
     outUvs = new Float32Array(numTris * 2);
     for (let i = 0; i < numTris; i++) {
-      const ui = uvIndices ? uvIndices[i] * 2 : triIndices[i] * 2;
+      // Use corner index to look up uvIndices (faceVarying), not triangulated index
+      const ui = uvIndices ? uvIndices[triCorners[i]] * 2 : triIndices[i] * 2;
       if (ui + 1 < uvs.length) {
         outUvs[i * 2]     = uvs[ui];
         outUvs[i * 2 + 1] = 1.0 - uvs[ui + 1]; 
@@ -325,6 +337,12 @@ export function buildGlb(scene: UsdScene): Uint8Array {
 
     if (geo.uvs) {
       primitive.attributes["TEXCOORD_0"] = addAccessor(geo.uvs, FLOAT, "VEC2", ARRAY_BUFFER);
+    } else if (mesh.materialPath) {
+      // Mesh has no UV data but has a material — generate all-zero TEXCOORD_0
+      // so that any baseColorTexture on the material stays valid glTF.
+      const vertexCount = geo.positions.length / 3;
+      const fallbackUvs = new Float32Array(vertexCount * 2); // initialized to 0
+      primitive.attributes["TEXCOORD_0"] = addAccessor(fallbackUvs, FLOAT, "VEC2", ARRAY_BUFFER);
     }
 
     let indexData: Uint32Array | Uint16Array = geo.indices;

@@ -446,8 +446,12 @@ function buildPrimTree(
   const roots: CratePrim[] = [];
   const stack: CratePrim[] = [];
 
+  // Track the most recently seen Prim so that Attribute/Relationship specs
+  // following it can have their data merged into its attrs.
+  let lastPrim: CratePrim | null = null;
+
   for (const spec of specs) {
-    const path = pathStrings[spec.pathIndex] ?? "";
+    const localName = pathStrings[spec.pathIndex] ?? "";
     const attrs = new Map<string, unknown>();
 
     const fieldSet = fieldSets[spec.fieldSetIndex] ?? [];
@@ -459,9 +463,31 @@ function buildPrimTree(
       attrs.set(attrName, value);
     }
 
-    const prim: CratePrim = { path, specType: spec.specType, attrs, children: [] };
+    // Attribute and Relationship specs store property data (UV primvars,
+    // material bindings, shader inputs, etc.) in separate specs that follow
+    // their parent Prim in depth-first order. Merge their "default" value
+    // (or relationship target) into the parent Prim's attrs so that
+    // extractMesh / extractMaterial can find them by property name.
+    if (
+      (spec.specType === SpecType.Attribute || spec.specType === SpecType.Relationship) &&
+      lastPrim
+    ) {
+      const defaultValue = attrs.get("default");
+      if (defaultValue !== undefined) {
+        lastPrim.attrs.set(localName, defaultValue);
+      }
+      // Relationships (e.g. material:binding) may store targets differently
+      const targetPaths = attrs.get("targetPaths") as string[] | undefined;
+      if (targetPaths && targetPaths.length > 0) {
+        lastPrim.attrs.set(localName, targetPaths[0]);
+      }
+      continue;
+    }
 
-    const depth = path.split("/").filter(Boolean).length;
+    // Prim / PseudoRoot specs: build the tree as before
+    const prim: CratePrim = { path: localName, specType: spec.specType, attrs, children: [] };
+
+    const depth = localName.split("/").filter(Boolean).length;
     while (stack.length >= depth) stack.pop();
 
     if (stack.length > 0) {
@@ -470,6 +496,7 @@ function buildPrimTree(
       roots.push(prim);
     }
     stack.push(prim);
+    lastPrim = prim;
   }
 
   return roots;
@@ -548,10 +575,14 @@ function extractMesh(p: CratePrim, transform: Mat4): UsdMesh | null {
 
   let uvs: Float32Array | undefined;
   let uvIndices: Int32Array | undefined;
-  const rawUV = (p.attrs.get("primvars:st") ?? p.attrs.get("primvars:uv")) as [number,number][] | undefined;
+  const stUV = p.attrs.get("primvars:st") as [number,number][] | undefined;
+  const uvUV = p.attrs.get("primvars:uv") as [number,number][] | undefined;
+  const rawUV = stUV ?? uvUV;
   if (rawUV) {
     uvs = new Float32Array(rawUV.flatMap(v => v));
-    const rawUVIdx = p.attrs.get("primvars:st:indices") as number[] | undefined;
+    const rawUVIdx = (stUV
+      ? p.attrs.get("primvars:st:indices")
+      : p.attrs.get("primvars:uv:indices")) as number[] | undefined;
     if (rawUVIdx) uvIndices = new Int32Array(rawUVIdx);
   }
 
