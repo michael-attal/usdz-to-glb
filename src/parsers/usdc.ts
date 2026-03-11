@@ -155,7 +155,9 @@ interface Section {
 }
 
 function readSections(r: Reader): Section[] {
-  r.seek(r.length - 8);
+  // TOC offset is stored in the bootstrap header at byte 16 (int64 LE),
+  // NOT at the end of the file.
+  r.seek(16);
   const tocOffset = r.u64();
 
   r.seek(tocOffset);

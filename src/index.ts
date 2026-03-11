@@ -7,6 +7,10 @@
  *   fs.writeFileSync("model.glb", glb);
  */
 
+import { execSync }          from "child_process";
+import * as fs               from "fs";
+import * as os               from "os";
+import * as path             from "path";
 import { unpackUSDZ }        from "./parsers/usdz";
 import { parseUSDA }         from "./parsers/usda";
 import { parseUSDC }         from "./parsers/usdc";
@@ -16,6 +20,35 @@ import { UsdScene, UsdMaterial } from "./parsers/usd-types";
 export type { UsdScene }     from "./parsers/usd-types";
 export type { UsdMesh }      from "./parsers/usd-types";
 export type { UsdMaterial }  from "./parsers/usd-types";
+
+/**
+ * Try to convert a USDC binary buffer to USDA text using the `usdcat` CLI.
+ * Returns the USDA text on success, or null if usdcat is not available.
+ */
+function tryUsdcatConvert(usdcData: Uint8Array): string | null {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "usdz-to-glb-"));
+  const tmpUsdc = path.join(tmpDir, "input.usdc");
+  try {
+    fs.writeFileSync(tmpUsdc, usdcData);
+    const result = execSync(`usdcat --flatten "${tmpUsdc}"`, {
+      encoding: "utf-8",
+      maxBuffer: 100 * 1024 * 1024, // 100 MB max output
+      timeout: 30_000,              // 30 second timeout
+    });
+    if (result && result.length > 0) {
+      console.log(`[usdz-to-glb] usdcat converted USDC to USDA (${result.length} chars)`);
+      return result;
+    }
+    return null;
+  } catch (err) {
+    console.log(`[usdz-to-glb] usdcat not available or failed, falling back to built-in USDC parser: ${err}`);
+    return null;
+  } finally {
+    // Clean up temp files
+    try { fs.unlinkSync(tmpUsdc); } catch {}
+    try { fs.rmdirSync(tmpDir); } catch {}
+  }
+}
 
 /**
  * Convert a USDZ buffer to a GLB buffer.
@@ -63,9 +96,17 @@ export function convertUsdzToGlb(usdzBuffer: Uint8Array | Buffer): Uint8Array {
         const text = new TextDecoder().decode(entry.data);
         scene = parseUSDA(text, assets);
       } else {
-        scene = parseUSDC(entry.data, assets);
+        // Try usdcat first (reliable, handles all USDC versions),
+        // fall back to the built-in USDC parser if unavailable.
+        const usdaText = tryUsdcatConvert(entry.data);
+        if (usdaText) {
+          scene = parseUSDA(usdaText, assets);
+        } else {
+          scene = parseUSDC(entry.data, assets);
+        }
       }
-    } catch {
+    } catch (err) {
+      console.log(`[usdz-to-glb] Failed to parse ${entry.filename}: ${err}`);
       continue;
     }
 
@@ -75,5 +116,6 @@ export function convertUsdzToGlb(usdzBuffer: Uint8Array | Buffer): Uint8Array {
     if (scene.metersPerUnit) merged.metersPerUnit = scene.metersPerUnit;
   }
 
+  console.log(`[usdz-to-glb] Merged scene: ${merged.meshes.length} meshes, ${merged.materials.size} materials`);
   return buildGlb(merged);
 }

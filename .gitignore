@@ -3,3 +3,4 @@ dist/
 *.usdz
 *.glb
 .claude/
+.DS_Store

@@ -337,18 +337,22 @@ function parseValue(p: Parser, typeName: string): unknown {
   // Arrays  [...]
   if (t.kind === "LBRACKET") {
     if (typeName.includes("point3f") || typeName.includes("normal3f") ||
-        typeName.includes("vector3f") || typeName.includes("color3f")) {
+        typeName.includes("vector3f") || typeName.includes("color3f") ||
+        typeName.includes("float3") || typeName.includes("double3") || typeName.includes("half3")) {
       return p.readArray(() => p.readVec3());
     }
-    if (typeName.includes("texCoord2f") || typeName.includes("float2")) {
+    if (typeName.includes("texCoord2f") || typeName.includes("float2") ||
+        typeName.includes("double2") || typeName.includes("half2")) {
       return p.readArray(() => p.readVec2());
     }
-    if (typeName.includes("float4") || typeName.includes("color4f")) {
+    if (typeName.includes("float4") || typeName.includes("color4f") ||
+        typeName.includes("double4") || typeName.includes("half4")) {
       return p.readArray(() => p.readVec4());
     }
     if (typeName.includes("int") || typeName.includes("uint")) {
       return p.readArray(() => p.readNumber());
     }
+    // Scalar float/double/half — must come AFTER vector type checks above
     if (typeName.includes("float") || typeName.includes("double") || typeName.includes("half")) {
       return p.readArray(() => p.readNumber());
     }
