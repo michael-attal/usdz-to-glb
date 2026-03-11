@@ -519,6 +519,11 @@ function buildMaterial(prim: Prim): UsdMaterial {
   let roughness = 0.5;
   let diffuseTexturePath: string | undefined;
 
+  // Collect all shader info first, then resolve diffuse texture via connection
+  let diffuseConnTarget: string | undefined;
+  const texturesByPath = new Map<string, string>();
+  let firstTexturePath: string | undefined;
+
   function findShaders(p: Prim): void {
     if (p.type === "Shader") {
       const infoId = p.attrs.get("info:id") as string | undefined;
@@ -529,6 +534,13 @@ function buildMaterial(prim: Prim): UsdMaterial {
         if (m !== undefined) metallic = m;
         const r = p.attrs.get("inputs:roughness") as number | undefined;
         if (r !== undefined) roughness = r;
+
+        // Follow inputs:diffuseColor.connect to identify the correct diffuse texture shader
+        const conn = p.attrs.get("inputs:diffuseColor.connect") as string | undefined;
+        if (conn) {
+          // Connection format: "</path/to/shader.outputs:rgb>" — extract prim path
+          diffuseConnTarget = conn.replace(/^<|>$/g, "").replace(/\.outputs:.*$/, "");
+        }
       }
       if (infoId === "UsdUVTexture") {
         const file = p.attrs.get("inputs:file") as string | undefined;
@@ -537,13 +549,21 @@ function buildMaterial(prim: Prim): UsdMaterial {
           // Handle USDZ nested layer paths: "archive.usdz[inner/path]"
           const bracketMatch = texPath.match(/\[(.+)\]$/);
           if (bracketMatch) texPath = bracketMatch[1];
-          diffuseTexturePath = texPath;
+          texturesByPath.set(p.path, texPath);
+          if (!firstTexturePath) firstTexturePath = texPath;
         }
       }
     }
     for (const child of p.children) findShaders(child);
   }
   findShaders(prim);
+
+  // Resolve diffuse texture: follow connection if available, otherwise fall back to first texture
+  if (diffuseConnTarget && texturesByPath.has(diffuseConnTarget)) {
+    diffuseTexturePath = texturesByPath.get(diffuseConnTarget);
+  } else if (texturesByPath.size > 0) {
+    diffuseTexturePath = firstTexturePath;
+  }
 
   return {
     name: prim.name,
